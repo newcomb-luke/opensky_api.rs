@@ -31,6 +31,9 @@ impl OpenSkyStates {
     }
 }
 
+// May Ferris forgive me.
+// This needed to be done because the OpenSky API returns the state vectors as lists, and not
+// objects. So this needed to be done for deserialization
 #[derive(Debug, Deserialize)]
 struct InnerStateVector(
     String,
@@ -49,6 +52,7 @@ struct InnerStateVector(
     Option<f32>,
     Option<String>,
     bool,
+    u8,
     u32,
 );
 
@@ -70,7 +74,59 @@ pub struct StateVector {
     pub geo_altitude: Option<f32>,
     pub squawk: Option<String>,
     pub spi: bool,
-    pub position_source: u32,
+    pub position_source: u8,
+    /// There is an undocumented extra field in StateVectors, for now it will be read, and just
+    /// ignored. This will be updated when the API reference begins to list this field
+    pub undocumented: u32,
+}
+
+struct InnerFlight(
+    String,
+    u64,
+    Option<String>,
+    u64,
+    Option<String>,
+    Option<String>,
+    u32,
+    u32,
+    u32,
+    u32,
+    u16,
+    u16,
+);
+
+pub struct Flight {
+    pub icao24: String,
+    pub first_seen: u64,
+    pub est_departure_airport: Option<String>,
+    pub last_seen: u64,
+    pub est_arrival_airport: Option<String>,
+    pub callsign: Option<String>,
+    pub est_departure_airport_horiz_distance: u32,
+    pub est_departure_airport_vert_distance: u32,
+    pub est_arrival_airport_horiz_distance: u32,
+    pub est_arrival_airport_vert_distance: u32,
+    pub departure_airport_candidates_count: u16,
+    pub arrival_airport_candidates_count: u16,
+}
+
+impl Flight {
+    fn from_inner(i_f: InnerFlight) -> Self {
+        Self {
+            icao24: i_f.0,
+            first_seen: i_f.1,
+            est_departure_airport: i_f.2,
+            last_seen: i_f.3,
+            est_arrival_airport: i_f.4,
+            callsign: i_f.5,
+            est_departure_airport_horiz_distance: i_f.6,
+            est_departure_airport_vert_distance: i_f.7,
+            est_arrival_airport_horiz_distance: i_f.8,
+            est_arrival_airport_vert_distance: i_f.9,
+            departure_airport_candidates_count: i_f.10,
+            arrival_airport_candidates_count: i_f.11,
+        }
+    }
 }
 
 impl StateVector {
@@ -93,6 +149,7 @@ impl StateVector {
             squawk: isv.14,
             spi: isv.15,
             position_source: isv.16,
+            undocumented: isv.17,
         }
     }
 }
@@ -122,6 +179,7 @@ pub struct StateRequest {
     bbox: Option<BoundingBox>,
     time: Option<u64>,
     icao24_addresses: Vec<String>,
+    serials: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,7 +194,43 @@ pub struct FlightsRequest {
 pub struct ArrivalsRequest {}
 
 impl FlightsRequest {
-    pub fn send(&self) -> () {}
+    pub async fn send(&self) -> Result<(), Error> {
+        let login_part = if let Some(login) = &self.login {
+            format!("{}:{}@", login.0, login.1)
+        } else {
+            String::new()
+        };
+
+        let mut args = String::new();
+
+        args.push_str(&format!("?begin={}&end={}", self.begin, self.end));
+
+        let endpoint = "all";
+
+        let url = format!(
+            "https://{}opensky-network.org/api/flights/{}{}",
+            login_part, endpoint, args
+        );
+
+        println!("url = {}", url);
+
+        let res = reqwest::get(url).await?;
+
+        match res.status() {
+            reqwest::StatusCode::OK => {
+                let bytes = res.bytes().await?.to_vec();
+
+                let string = String::from_utf8(bytes).unwrap();
+
+                println!("{}", &string[0..200]);
+
+                unimplemented!();
+
+                Ok(())
+            }
+            status => Err(Error::Http(status)),
+        }
+    }
 }
 
 impl StateRequest {
@@ -186,16 +280,35 @@ impl StateRequest {
             }
         }
 
+        // If serial numbers are provided determines which endpoint we use
+        let endpoint = if !self.serials.is_empty() {
+            if args.is_empty() {
+                args.push('?');
+            } else {
+                args.push('&');
+            }
+
+            if let Some(first) = self.serials.get(0) {
+                args.push_str(&format!("serials={}", first));
+            }
+
+            for serial in self.serials.iter().skip(1) {
+                args.push_str(&format!("&serials={}", serial));
+            }
+
+            "own"
+        } else {
+            "all"
+        };
+
         let url = format!(
-            "https://{}opensky-network.org/api/states/all{}",
-            login_part, args
+            "https://{}opensky-network.org/api/states/{}{}",
+            login_part, endpoint, args
         );
 
         println!("url = {}", url);
 
         let res = reqwest::get(url).await?;
-
-        // {"time":1635291426,"states":[["a665ae","IFL511  ","United States",1635291424,1635291426,-96.5759,30.63,12207.24,false,206.3,220.04,0,null,12763.5,"2525",false,0,0]
 
         match res.status() {
             reqwest::StatusCode::OK => {
@@ -274,8 +387,8 @@ impl FlightsRequestBuilder {
     }
 
     /// Consumes this FlightsRequestBuilder and sends the request to the API.
-    pub fn send(self) -> () {
-        self.inner.send()
+    pub async fn send(self) -> Result<(), Error> {
+        self.inner.send().await
     }
 }
 
@@ -287,6 +400,7 @@ impl StateRequestBuilder {
                 bbox: None,
                 time: None,
                 icao24_addresses: Vec::new(),
+                serials: Vec::new(),
             },
         }
     }
@@ -294,7 +408,7 @@ impl StateRequestBuilder {
     /// Adds the provided bounding box to the request. This will only get states that are within
     /// that bounding box. This will overwrite any previously specified bounding box.
     ///
-    pub fn with_bbox(&mut self, bbox: BoundingBox) -> &mut Self {
+    pub fn with_bbox(mut self, bbox: BoundingBox) -> Self {
         self.inner.bbox = Some(bbox);
 
         self
@@ -305,7 +419,7 @@ impl StateRequestBuilder {
     ///
     /// This time is specified as the time in seconds since the Unix Epoch.
     ///
-    pub fn at_time(&mut self, timestamp: u64) -> &mut Self {
+    pub fn at_time(mut self, timestamp: u64) -> Self {
         self.inner.time = Some(timestamp);
 
         self
@@ -317,8 +431,21 @@ impl StateRequestBuilder {
     ///
     /// If this function is never called, it will provide data for all aircraft.
     ///
-    pub fn with_icao24(&mut self, address: String) -> &mut Self {
+    pub fn with_icao24(mut self, address: String) -> Self {
         self.inner.icao24_addresses.push(address);
+
+        self
+    }
+
+    /// Adds a serial number of a sensor that you own. This must be owned by you and registered in
+    /// order to not return an HTTP error 403 (Forbidden). Requests from your own sensors are not
+    /// ratelimited.
+    ///
+    /// Calling this function multiple times will append more serial numbers of receiviers which
+    /// provide the returned data.
+    ///
+    pub fn with_serial(mut self, serial: u64) -> Self {
+        self.inner.serials.push(serial);
 
         self
     }
