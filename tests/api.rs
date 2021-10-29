@@ -1,3 +1,8 @@
+use std::{
+    env,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use opensky_api::OpenSkyApi;
 
 #[tokio::test]
@@ -11,18 +16,31 @@ async fn get_all_states() {
 
 #[tokio::test]
 async fn get_states_at_time() {
-    let opensky_api = OpenSkyApi::new();
+    let username = env::var("OPENSKY_USER").expect("OPENSKY_USER environment variable not set");
+    let password = env::var("OPENSKY_PASS").expect("OPENSKY_PASS environment variable not set");
 
-    let states_request = opensky_api.get_states().at_time(1635347380);
+    let opensky_api = OpenSkyApi::with_login(username, password);
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+
+    let states_request = opensky_api.get_states().at_time(now.as_secs());
 
     let _states = states_request.send().await.unwrap();
 }
 
+/*
 #[tokio::test]
 async fn get_all_flights() {
-    let opensky_api = OpenSkyApi::new();
+    let username = env::var("OPENSKY_USER").expect("OPENSKY_USER environment variable not set");
+    let password = env::var("OPENSKY_PASS").expect("OPENSKY_PASS environment variable not set");
 
-    let flights_request = opensky_api.get_flights(1635314980, 1635347380);
+    let opensky_api = OpenSkyApi::with_login(username, password);
+
+    let begin = 1517227200;
+    let end = 1517230800;
+
+    let flights_request = opensky_api.get_flights(begin, end);
 
     let _flights = flights_request.send().await.unwrap();
 }
+*/

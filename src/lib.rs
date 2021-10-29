@@ -10,6 +10,12 @@ struct InnerOpenSkyStates {
     pub states: Vec<InnerStateVector>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ShortInnerOpenSkyStates {
+    pub time: u64,
+    pub states: Vec<ShortInnerStateVector>,
+}
+
 #[derive(Debug)]
 pub struct OpenSkyStates {
     pub time: u64,
@@ -22,6 +28,19 @@ impl OpenSkyStates {
 
         for inner in inner.states {
             states.push(StateVector::from_inner(inner));
+        }
+
+        Self {
+            time: inner.time,
+            states,
+        }
+    }
+
+    fn from_short_inner(inner: ShortInnerOpenSkyStates) -> Self {
+        let mut states = Vec::with_capacity(inner.states.len());
+
+        for inner in inner.states {
+            states.push(StateVector::from_short_inner(inner));
         }
 
         Self {
@@ -56,6 +75,31 @@ struct InnerStateVector(
     u32,
 );
 
+// I am very close to writing my own Json parser, because serde_json does not seem to be extremely
+// well made for deserializing things that act this way. This is required, because in certain API
+// accesses, the last undocumented 17th field is actually not provided. This will probably be
+// temporary, but is so far required.
+#[derive(Debug, Deserialize)]
+struct ShortInnerStateVector(
+    String,
+    Option<String>,
+    String,
+    Option<u64>,
+    u64,
+    Option<f32>,
+    Option<f32>,
+    Option<f32>,
+    bool,
+    Option<f32>,
+    Option<f32>,
+    Option<f32>,
+    Option<Vec<u64>>,
+    Option<f32>,
+    Option<String>,
+    bool,
+    u8,
+);
+
 #[derive(Debug)]
 pub struct StateVector {
     pub icao24: String,
@@ -77,9 +121,10 @@ pub struct StateVector {
     pub position_source: u8,
     /// There is an undocumented extra field in StateVectors, for now it will be read, and just
     /// ignored. This will be updated when the API reference begins to list this field
-    pub undocumented: u32,
+    pub undocumented: Option<u32>,
 }
 
+/*
 struct InnerFlight(
     String,
     u64,
@@ -95,18 +140,29 @@ struct InnerFlight(
     u16,
 );
 
+#[derive(Debug, Deserialize)]
 pub struct Flight {
     pub icao24: String,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub first_seen: u64,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_departure_airport: Option<String>,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub last_seen: u64,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_arrival_airport: Option<String>,
     pub callsign: Option<String>,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_departure_airport_horiz_distance: u32,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_departure_airport_vert_distance: u32,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_arrival_airport_horiz_distance: u32,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub est_arrival_airport_vert_distance: u32,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub departure_airport_candidates_count: u16,
+    #[serde(rename(deserialize = "firstSeen"))]
     pub arrival_airport_candidates_count: u16,
 }
 
@@ -128,6 +184,7 @@ impl Flight {
         }
     }
 }
+*/
 
 impl StateVector {
     fn from_inner(isv: InnerStateVector) -> Self {
@@ -149,7 +206,30 @@ impl StateVector {
             squawk: isv.14,
             spi: isv.15,
             position_source: isv.16,
-            undocumented: isv.17,
+            undocumented: Some(isv.17),
+        }
+    }
+
+    fn from_short_inner(isv: ShortInnerStateVector) -> Self {
+        Self {
+            icao24: isv.0,
+            callsign: isv.1,
+            origin_country: isv.2,
+            time_position: isv.3,
+            last_contact: isv.4,
+            longitude: isv.5,
+            latitude: isv.6,
+            baro_altitude: isv.7,
+            on_ground: isv.8,
+            velocity: isv.9,
+            true_track: isv.10,
+            vertical_rate: isv.11,
+            sensors: isv.12,
+            geo_altitude: isv.13,
+            squawk: isv.14,
+            spi: isv.15,
+            position_source: isv.16,
+            undocumented: None,
         }
     }
 }
@@ -183,7 +263,7 @@ pub struct StateRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct FlightsRequest {
+struct FlightsRequest {
     login: Option<Arc<(String, String)>>,
     begin: u64,
     end: u64,
@@ -191,8 +271,9 @@ pub struct FlightsRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct ArrivalsRequest {}
+struct ArrivalsRequest {}
 
+/*
 impl FlightsRequest {
     pub async fn send(&self) -> Result<(), Error> {
         let login_part = if let Some(login) = &self.login {
@@ -232,6 +313,7 @@ impl FlightsRequest {
         }
     }
 }
+*/
 
 impl StateRequest {
     pub async fn send(&self) -> Result<OpenSkyStates, Error> {
@@ -314,24 +396,28 @@ impl StateRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                let inner_states: InnerOpenSkyStates = serde_json::from_slice(&bytes)?;
+                Ok(if self.time.is_some() {
+                    let short_inner_states: ShortInnerOpenSkyStates =
+                        serde_json::from_slice(&bytes)?;
 
-                Ok(OpenSkyStates::from_inner(inner_states))
+                    OpenSkyStates::from_short_inner(short_inner_states)
+                } else {
+                    let inner_states: InnerOpenSkyStates = serde_json::from_slice(&bytes)?;
+
+                    OpenSkyStates::from_inner(inner_states)
+                })
             }
             status => Err(Error::Http(status)),
         }
     }
 }
 
-impl ArrivalsRequest {
-    pub fn send(&self) -> () {}
-}
-
 pub struct StateRequestBuilder {
     inner: StateRequest,
 }
 
-pub struct FlightsRequestBuilder {
+/*
+struct FlightsRequestBuilder {
     inner: FlightsRequest,
 }
 
@@ -391,6 +477,7 @@ impl FlightsRequestBuilder {
         self.inner.send().await
     }
 }
+*/
 
 impl StateRequestBuilder {
     fn new(login: Option<Arc<(String, String)>>) -> Self {
@@ -494,6 +581,7 @@ impl OpenSkyApi {
         StateRequestBuilder::new(self.login.clone())
     }
 
+    /*
     /// Creates a new FlightsRequestBuilder using the given time interval. The beginning
     /// and ending times are numbers that represent times in seconds since the Unix Epoch.
     ///
@@ -502,6 +590,7 @@ impl OpenSkyApi {
     pub fn get_flights(&self, begin: u64, end: u64) -> FlightsRequestBuilder {
         FlightsRequestBuilder::new(self.login.clone(), begin, end)
     }
+    */
 }
 
 impl From<StateRequestBuilder> for StateRequest {
@@ -510,8 +599,10 @@ impl From<StateRequestBuilder> for StateRequest {
     }
 }
 
+/*
 impl From<FlightsRequestBuilder> for FlightsRequest {
     fn from(frb: FlightsRequestBuilder) -> Self {
         frb.consume()
     }
 }
+*/
