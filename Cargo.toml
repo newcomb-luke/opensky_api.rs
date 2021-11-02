@@ -1,6 +1,6 @@
 [package]
 name = "opensky_api"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Luke Newcomb <newcomb.luke@protonmail.com>"]
 description = "A simple Rust wrapper library around the OpenSky Network API"
 license = "MIT"

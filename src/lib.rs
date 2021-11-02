@@ -388,8 +388,6 @@ impl StateRequest {
             login_part, endpoint, args
         );
 
-        println!("url = {}", url);
-
         let res = reqwest::get(url).await?;
 
         match res.status() {
@@ -402,9 +400,15 @@ impl StateRequest {
 
                     OpenSkyStates::from_short_inner(short_inner_states)
                 } else {
-                    let inner_states: InnerOpenSkyStates = serde_json::from_slice(&bytes)?;
+                    // Retry for random API deviations
+                    if let Ok(inner_states) = serde_json::from_slice(&bytes) {
+                        OpenSkyStates::from_inner(inner_states)
+                    } else {
+                        let short_inner_states: ShortInnerOpenSkyStates =
+                            serde_json::from_slice(&bytes)?;
 
-                    OpenSkyStates::from_inner(inner_states)
+                        OpenSkyStates::from_short_inner(short_inner_states)
+                    }
                 })
             }
             status => Err(Error::Http(status)),
