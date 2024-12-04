@@ -1,22 +1,8 @@
 use std::sync::Arc;
 
 use crate::errors::Error;
+use log::debug;
 use serde::Deserialize;
-
-struct InnerFlight(
-    String,
-    u64,
-    Option<String>,
-    u64,
-    Option<String>,
-    Option<String>,
-    Option<u32>,
-    Option<u32>,
-    Option<u32>,
-    Option<u32>,
-    u16,
-    u16,
-);
 
 #[derive(Debug, Deserialize)]
 pub struct Flight {
@@ -44,25 +30,6 @@ pub struct Flight {
     pub arrival_airport_candidates_count: u16,
 }
 
-impl Flight {
-    fn from_inner(i_f: InnerFlight) -> Self {
-        Self {
-            icao24: i_f.0,
-            first_seen: i_f.1,
-            est_departure_airport: i_f.2,
-            last_seen: i_f.3,
-            est_arrival_airport: i_f.4,
-            callsign: i_f.5,
-            est_departure_airport_horiz_distance: i_f.6,
-            est_departure_airport_vert_distance: i_f.7,
-            est_arrival_airport_horiz_distance: i_f.8,
-            est_arrival_airport_vert_distance: i_f.9,
-            departure_airport_candidates_count: i_f.10,
-            arrival_airport_candidates_count: i_f.11,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct FlightsRequest {
     login: Option<Arc<(String, String)>>,
@@ -75,7 +42,7 @@ struct FlightsRequest {
 struct ArrivalsRequest {}
 
 impl FlightsRequest {
-    pub async fn send(&self) -> Result<(), Error> {
+    pub async fn send(&self) -> Result<Vec<Flight>, Error> {
         let login_part = if let Some(login) = &self.login {
             format!("{}:{}@", login.0, login.1)
         } else {
@@ -93,7 +60,7 @@ impl FlightsRequest {
             login_part, endpoint, args
         );
 
-        println!("url = {}", url);
+        debug!("url = {}", url);
 
         let res = reqwest::get(url).await?;
 
@@ -101,13 +68,16 @@ impl FlightsRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                let string = String::from_utf8(bytes).unwrap();
+                let result: Vec<Flight> = match serde_json::from_slice(&bytes) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        debug!("Error: {:?}", e);
+                        return Err(Error::InvalidJson(e));
+                    }
+                };
 
-                println!("{}", &string[0..200]);
+                Ok(result)
 
-                unimplemented!();
-
-                Ok(())
             }
             status => Err(Error::Http(status)),
         }
@@ -171,7 +141,7 @@ impl FlightsRequestBuilder {
     }
 
     /// Consumes this FlightsRequestBuilder and sends the request to the API.
-    pub async fn send(self) -> Result<(), Error> {
+    pub async fn send(self) -> Result<Vec<Flight>, Error> {
         self.inner.send().await
     }
 }
