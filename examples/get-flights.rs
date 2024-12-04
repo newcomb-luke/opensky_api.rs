@@ -33,8 +33,7 @@ async fn main() {
 
     let now = Local::now().timestamp() as u64;
     info!("now: {}", now);
-    let flights_request = opensky_api
-        .get_flights(now-100, now);
+    let flights_request = opensky_api.get_flights(now - 100, now);
 
     let result = flights_request.send().await;
     match result {

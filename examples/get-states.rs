@@ -33,7 +33,8 @@ async fn main() {
 
     let states_request = opensky_api
         .get_states()
-        .with_icao24("c18324".to_string());
+        .at_time(1458564121)
+        .with_icao24("3c6444".to_string());
 
     let result = states_request.send().await;
     match result {

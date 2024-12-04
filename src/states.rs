@@ -1,106 +1,16 @@
 use std::sync::Arc;
 
-use log::{debug, warn};
-use serde::Deserialize;
-use serde_json::error::Category;
+use log::{debug, info, warn};
+use serde::{Deserialize, Deserializer};
+use serde_json::{from_value, Value};
 
 use crate::{bounding_box::BoundingBox, errors::Error};
 
 #[derive(Debug, Deserialize)]
-struct InnerOpenSkyStates {
-    pub time: u64,
-    pub states: Vec<InnerStateVector>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ShortInnerOpenSkyStates {
-    pub time: u64,
-    pub states: Vec<ShortInnerStateVector>,
-}
-
-#[derive(Debug)]
-pub struct OpenSkyStates {
+pub struct States {
     pub time: u64,
     pub states: Vec<StateVector>,
 }
-
-impl OpenSkyStates {
-    fn from_inner(inner: InnerOpenSkyStates) -> Self {
-        let mut states = Vec::with_capacity(inner.states.len());
-
-        for inner in inner.states {
-            states.push(StateVector::from_inner(inner));
-        }
-
-        Self {
-            time: inner.time,
-            states,
-        }
-    }
-
-    fn from_short_inner(inner: ShortInnerOpenSkyStates) -> Self {
-        let mut states = Vec::with_capacity(inner.states.len());
-
-        for inner in inner.states {
-            states.push(StateVector::from_short_inner(inner));
-        }
-
-        Self {
-            time: inner.time,
-            states,
-        }
-    }
-}
-
-// May Ferris forgive me.
-// This needed to be done because the OpenSky API returns the state vectors as lists, and not
-// objects. So this needed to be done for deserialization
-#[derive(Debug, Deserialize)]
-struct InnerStateVector(
-    String,
-    Option<String>,
-    String,
-    Option<u64>,
-    u64,
-    Option<f32>,
-    Option<f32>,
-    Option<f32>,
-    bool,
-    Option<f32>,
-    Option<f32>,
-    Option<f32>,
-    Option<Vec<u64>>,
-    Option<f32>,
-    Option<String>,
-    bool,
-    u8,
-    u32,
-);
-
-// I am very close to writing my own Json parser, because serde_json does not seem to be extremely
-// well made for deserializing things that act this way. This is required, because in certain API
-// accesses, the last undocumented 17th field is actually not provided. This will probably be
-// temporary, but is so far required.
-#[derive(Debug, Deserialize)]
-struct ShortInnerStateVector(
-    String,
-    Option<String>,
-    String,
-    Option<u64>,
-    u64,
-    Option<f32>,
-    Option<f32>,
-    Option<f32>,
-    bool,
-    Option<f32>,
-    Option<f32>,
-    Option<f32>,
-    Option<Vec<u64>>,
-    Option<f32>,
-    Option<String>,
-    bool,
-    u8,
-);
 
 #[derive(Debug)]
 pub struct StateVector {
@@ -123,54 +33,48 @@ pub struct StateVector {
     pub position_source: u8,
     /// There is an undocumented extra field in StateVectors, for now it will be read, and just
     /// ignored. This will be updated when the API reference begins to list this field
-    pub undocumented: Option<u32>,
+    pub category: Option<u32>,
 }
 
-impl StateVector {
-    fn from_inner(isv: InnerStateVector) -> Self {
-        Self {
-            icao24: isv.0,
-            callsign: isv.1,
-            origin_country: isv.2,
-            time_position: isv.3,
-            last_contact: isv.4,
-            longitude: isv.5,
-            latitude: isv.6,
-            baro_altitude: isv.7,
-            on_ground: isv.8,
-            velocity: isv.9,
-            true_track: isv.10,
-            vertical_rate: isv.11,
-            sensors: isv.12,
-            geo_altitude: isv.13,
-            squawk: isv.14,
-            spi: isv.15,
-            position_source: isv.16,
-            undocumented: Some(isv.17),
-        }
-    }
+impl<'de> Deserialize<'de> for StateVector {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let values: Vec<Value> = Deserialize::deserialize(deserializer)?;
 
-    fn from_short_inner(isv: ShortInnerStateVector) -> Self {
-        Self {
-            icao24: isv.0,
-            callsign: isv.1,
-            origin_country: isv.2,
-            time_position: isv.3,
-            last_contact: isv.4,
-            longitude: isv.5,
-            latitude: isv.6,
-            baro_altitude: isv.7,
-            on_ground: isv.8,
-            velocity: isv.9,
-            true_track: isv.10,
-            vertical_rate: isv.11,
-            sensors: isv.12,
-            geo_altitude: isv.13,
-            squawk: isv.14,
-            spi: isv.15,
-            position_source: isv.16,
-            undocumented: None,
+        if values.len() != 18 && values.len() != 17 {
+            warn!("expected 18 elements, got {}", values.len());
+            return Err(serde::de::Error::invalid_length(
+                values.len(),
+                &"expected 18 elements",
+            ));
         }
+
+        Ok(StateVector {
+            icao24: from_value(values[0].clone()).map_err(serde::de::Error::custom)?,
+            callsign: from_value(values[1].clone()).map_err(serde::de::Error::custom)?,
+            origin_country: from_value(values[2].clone()).map_err(serde::de::Error::custom)?,
+            time_position: from_value(values[3].clone()).map_err(serde::de::Error::custom)?,
+            last_contact: from_value(values[4].clone()).map_err(serde::de::Error::custom)?,
+            longitude: from_value(values[5].clone()).map_err(serde::de::Error::custom)?,
+            latitude: from_value(values[6].clone()).map_err(serde::de::Error::custom)?,
+            baro_altitude: from_value(values[7].clone()).map_err(serde::de::Error::custom)?,
+            on_ground: from_value(values[8].clone()).map_err(serde::de::Error::custom)?,
+            velocity: from_value(values[9].clone()).map_err(serde::de::Error::custom)?,
+            true_track: from_value(values[10].clone()).map_err(serde::de::Error::custom)?,
+            vertical_rate: from_value(values[11].clone()).map_err(serde::de::Error::custom)?,
+            sensors: from_value(values[12].clone()).map_err(serde::de::Error::custom)?,
+            geo_altitude: from_value(values[13].clone()).map_err(serde::de::Error::custom)?,
+            squawk: from_value(values[14].clone()).map_err(serde::de::Error::custom)?,
+            spi: from_value(values[15].clone()).map_err(serde::de::Error::custom)?,
+            position_source: from_value(values[16].clone()).map_err(serde::de::Error::custom)?,
+            category: if values.len() == 18 {
+                from_value(values[17].clone()).map_err(serde::de::Error::custom)?
+            } else {
+                None
+            },
+        })
     }
 }
 
@@ -184,7 +88,7 @@ pub struct StateRequest {
 }
 
 impl StateRequest {
-    pub async fn send(&self) -> Result<OpenSkyStates, Error> {
+    pub async fn send(&self) -> Result<States, Error> {
         let login_part = if let Some(login) = &self.login {
             format!("{}:{}@", login.0, login.1)
         } else {
@@ -263,28 +167,28 @@ impl StateRequest {
                 let bytes = res.bytes().await?.to_vec();
 
                 let time = match self.time {
-                    Some(time) => time, 
+                    Some(time) => time,
                     None => 0,
                 };
-                let short_inner_states: ShortInnerOpenSkyStates =
-                    match serde_json::from_slice(&bytes) {
-                        Ok(result) => result,
-                        Err(err) => {
-                            warn!("JSON Error: {}", err);
-                            if err.to_string().as_str().starts_with("invalid type: null") {
-                                ShortInnerOpenSkyStates {
-                                    time,
-                                    states: Vec::new(),
-                                }
-                            } else {
-                                return Err(Error::InvalidJson(err));
+                info!("received: {:#?}", String::from_utf8_lossy(&bytes));
+                let states: States = match serde_json::from_slice(&bytes) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        warn!("JSON Error: {}", err);
+                        if err.to_string().as_str().starts_with("invalid type: null") {
+                            States {
+                                time,
+                                states: Vec::new(),
                             }
+                        } else {
+                            return Err(Error::InvalidJson(err));
                         }
-                    };
+                    }
+                };
 
-                debug!("ShortInnerOpenSkyStates: \n{:#?}", short_inner_states);
+                debug!("ShortInnerOpenSkyStates: \n{:#?}", states);
 
-                Ok(OpenSkyStates::from_short_inner(short_inner_states))
+                Ok(states)
             }
             status => Err(Error::Http(status)),
         }
@@ -370,7 +274,7 @@ impl StateRequestBuilder {
     }
 
     /// Consumes this StateRequestBuilder and sends the request to the API.
-    pub async fn send(self) -> Result<OpenSkyStates, Error> {
+    pub async fn send(self) -> Result<States, Error> {
         self.inner.send().await
     }
 }
