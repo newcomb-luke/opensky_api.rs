@@ -16,6 +16,8 @@ async fn get_all_states() {
 
 #[tokio::test]
 async fn get_states_at_time() {
+    dotenv::dotenv().ok();
+
     let username = env::var("OPENSKY_USER").expect("OPENSKY_USER environment variable not set");
     let password = env::var("OPENSKY_PASS").expect("OPENSKY_PASS environment variable not set");
 
