@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use log::{debug, warn};
 use serde::Deserialize;
+use serde_json::error::Category;
 
 use crate::{bounding_box::BoundingBox, errors::Error};
 
@@ -260,22 +262,29 @@ impl StateRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                Ok(if self.time.is_some() {
-                    let short_inner_states: ShortInnerOpenSkyStates =
-                        serde_json::from_slice(&bytes)?;
+                let time = match self.time {
+                    Some(time) => time, 
+                    None => 0,
+                };
+                let short_inner_states: ShortInnerOpenSkyStates =
+                    match serde_json::from_slice(&bytes) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            warn!("JSON Error: {}", err);
+                            if err.to_string().as_str().starts_with("invalid type: null") {
+                                ShortInnerOpenSkyStates {
+                                    time,
+                                    states: Vec::new(),
+                                }
+                            } else {
+                                return Err(Error::InvalidJson(err));
+                            }
+                        }
+                    };
 
-                    OpenSkyStates::from_short_inner(short_inner_states)
-                } else {
-                    // Retry for random API deviations
-                    if let Ok(inner_states) = serde_json::from_slice(&bytes) {
-                        OpenSkyStates::from_inner(inner_states)
-                    } else {
-                        let short_inner_states: ShortInnerOpenSkyStates =
-                            serde_json::from_slice(&bytes)?;
+                debug!("ShortInnerOpenSkyStates: \n{:#?}", short_inner_states);
 
-                        OpenSkyStates::from_short_inner(short_inner_states)
-                    }
-                })
+                Ok(OpenSkyStates::from_short_inner(short_inner_states))
             }
             status => Err(Error::Http(status)),
         }
