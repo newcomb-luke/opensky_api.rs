@@ -10,10 +10,10 @@ struct InnerFlight(
     u64,
     Option<String>,
     Option<String>,
-    u32,
-    u32,
-    u32,
-    u32,
+    Option<u32>,
+    Option<u32>,
+    Option<u32>,
+    Option<u32>,
     u16,
     u16,
 );
@@ -23,24 +23,24 @@ pub struct Flight {
     pub icao24: String,
     #[serde(rename(deserialize = "firstSeen"))]
     pub first_seen: u64,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(rename(deserialize = "estDepartureAirport"))]
     pub est_departure_airport: Option<String>,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(rename(deserialize = "lastSeen"))]
     pub last_seen: u64,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(rename(deserialize = "estArrivalAirport"))]
     pub est_arrival_airport: Option<String>,
     pub callsign: Option<String>,
-    #[serde(rename(deserialize = "firstSeen"))]
-    pub est_departure_airport_horiz_distance: u32,
-    #[serde(rename(deserialize = "firstSeen"))]
-    pub est_departure_airport_vert_distance: u32,
-    #[serde(rename(deserialize = "firstSeen"))]
-    pub est_arrival_airport_horiz_distance: u32,
-    #[serde(rename(deserialize = "firstSeen"))]
-    pub est_arrival_airport_vert_distance: u32,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(rename(deserialize = "estDepartureAirportHorizDistance"))]
+    pub est_departure_airport_horiz_distance: Option<u32>,
+    #[serde(rename(deserialize = "estDepartureAirportVertDistance"))]
+    pub est_departure_airport_vert_distance: Option<u32>,
+    #[serde(rename(deserialize = "estArrivalAirportHorizDistance"))]
+    pub est_arrival_airport_horiz_distance: Option<u32>,
+    #[serde(rename(deserialize = "estArrivalAirportVertDistance"))]
+    pub est_arrival_airport_vert_distance: Option<u32>,
+    #[serde(rename(deserialize = "departureAirportCandidatesCount"))]
     pub departure_airport_candidates_count: u16,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(rename(deserialize = "arrivalAirportCandidatesCount"))]
     pub arrival_airport_candidates_count: u16,
 }
 
