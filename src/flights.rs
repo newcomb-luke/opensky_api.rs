@@ -1,3 +1,4 @@
+//! This module contains the FlightsRequest and FlightsRequestBuilder structs which are used to
 use std::sync::Arc;
 
 use crate::errors::Error;
@@ -5,41 +6,58 @@ use log::debug;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
+/// Represents a flight object returned by the OpenSky API
 pub struct Flight {
+    /// Unique ICAO 24-bit address of the transponder in hex string representation. All letters are lower case.
     pub icao24: String,
     #[serde(rename(deserialize = "firstSeen"))]
+    /// Estimated time of departure for the flight as Unix time (seconds since epoch).
     pub first_seen: u64,
     #[serde(rename(deserialize = "estDepartureAirport"))]
+    /// ICAO code of the estimated departure airport. Can be null if the airport could not be identified.
     pub est_departure_airport: Option<String>,
     #[serde(rename(deserialize = "lastSeen"))]
+    /// Estimated time of arrival for the flight as Unix time (seconds since epoch).
     pub last_seen: u64,
     #[serde(rename(deserialize = "estArrivalAirport"))]
+    ///  ICAO code of the estimated arrival airport. Can be null if the airport could not be identified.
     pub est_arrival_airport: Option<String>,
+    /// Callsign of the vehicle (8 chars). Can be null if no callsign has been received. If the vehicle transmits multiple callsigns during the flight, we take the one seen most frequently.
     pub callsign: Option<String>,
     #[serde(rename(deserialize = "estDepartureAirportHorizDistance"))]
+    /// Horizontal distance of the last received airborne position to the estimated departure airport in meters.
     pub est_departure_airport_horiz_distance: Option<u32>,
     #[serde(rename(deserialize = "estDepartureAirportVertDistance"))]
+    /// Vertical distance of the last received airborne position to the estimated departure airport in meters.
     pub est_departure_airport_vert_distance: Option<u32>,
     #[serde(rename(deserialize = "estArrivalAirportHorizDistance"))]
+    /// Horizontal distance of the last received airborne position to the estimated arrival airport in meters.
     pub est_arrival_airport_horiz_distance: Option<u32>,
     #[serde(rename(deserialize = "estArrivalAirportVertDistance"))]
+    /// Vertical distance of the last received airborne position to the estimated arrival airport in meters.
     pub est_arrival_airport_vert_distance: Option<u32>,
     #[serde(rename(deserialize = "departureAirportCandidatesCount"))]
+    /// Number of other possible departure airports. These are airports in short distance to estDepartureAirport.
     pub departure_airport_candidates_count: u16,
     #[serde(rename(deserialize = "arrivalAirportCandidatesCount"))]
+    /// Number of other possible departure airports.
     pub arrival_airport_candidates_count: u16,
 }
 
 #[derive(Debug, Clone)]
-struct FlightsRequest {
+enum FlightsRequestType {
+    All,
+    Aircraft(String),
+    Arrival(String),
+    Departure(String),
+}
+#[derive(Debug, Clone)]
+pub struct FlightsRequest {
     login: Option<Arc<(String, String)>>,
     begin: u64,
     end: u64,
-    icao24_address: Option<String>,
+    request_type: FlightsRequestType,
 }
-
-#[derive(Debug, Clone)]
-struct ArrivalsRequest {}
 
 impl FlightsRequest {
     pub async fn send(&self) -> Result<Vec<Flight>, Error> {
@@ -49,11 +67,21 @@ impl FlightsRequest {
             String::new()
         };
 
-        let mut args = String::new();
+        let endpoint = match &self.request_type {
+            FlightsRequestType::All => "all",
+            FlightsRequestType::Aircraft(_) => "aircraft",
+            FlightsRequestType::Arrival(_) => "arrival",
+            FlightsRequestType::Departure(_) => "departure",
+        };
 
-        args.push_str(&format!("?begin={}&end={}", self.begin, self.end));
-
-        let endpoint = "all";
+        let mut args = format!("?begin={}&end={}", self.begin, self.end);
+        let additional_filters = match &self.request_type {
+            FlightsRequestType::All => String::new(),
+            FlightsRequestType::Aircraft(address) => format!("&icao24={}", address),
+            FlightsRequestType::Arrival(airport_icao) => format!("&airport={}", airport_icao),
+            FlightsRequestType::Departure(airport_icao) => format!("&airport={}", airport_icao),
+        };
+        args.push_str(&additional_filters);
 
         let url = format!(
             "https://{}opensky-network.org/api/flights/{}{}",
@@ -77,26 +105,27 @@ impl FlightsRequest {
                 };
 
                 Ok(result)
-
             }
             status => Err(Error::Http(status)),
         }
     }
 }
 
-
+#[derive(Debug, Clone)]
 pub struct FlightsRequestBuilder {
     inner: FlightsRequest,
 }
 
 impl FlightsRequestBuilder {
     pub fn new(login: Option<Arc<(String, String)>>, begin: u64, end: u64) -> Self {
+        //assert!(end - begin <= 7200, "Interval must not span greater than 2 hours");
+        //assert!(end > begin, "End time must be greater than begin time");
         Self {
             inner: FlightsRequest {
                 login,
                 begin,
                 end,
-                icao24_address: None,
+                request_type: FlightsRequestType::All,
             },
         }
     }
@@ -109,6 +138,8 @@ impl FlightsRequestBuilder {
     /// The interval must not span greater than 2 hours, otherwise the request will fail.
     ///
     pub fn in_interval(&mut self, begin: u64, end: u64) -> &mut Self {
+        assert!(end - begin <= 7200, "Interval must not span greater than 2 hours");
+        assert!(end > begin, "End time must be greater than begin time");
         self.inner.begin = begin;
         self.inner.end = end;
 
@@ -119,7 +150,24 @@ impl FlightsRequestBuilder {
     /// ICAO24 address is in hex string representation.
     ///
     pub fn by_aircraft(&mut self, address: String) -> &mut Self {
-        self.inner.icao24_address = Some(address);
+        self.inner.request_type = FlightsRequestType::Aircraft(address);
+
+        self
+    }
+
+    /// This method can be used to filter the flight data by a arrival airport. The airport
+    /// ICAO code is a 4-letter string.
+    /// 
+    pub fn by_arrival(&mut self, airport_icao: String) -> &mut Self {
+        self.inner.request_type = FlightsRequestType::Arrival(airport_icao);
+
+        self
+    }
+
+    /// This method can be used to filter the flight data by departure airport.
+    /// 
+    pub fn by_departure(&mut self, airport_icao: String) -> &mut Self {
+        self.inner.request_type = FlightsRequestType::Departure(airport_icao);
 
         self
     }

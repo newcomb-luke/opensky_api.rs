@@ -1,38 +1,82 @@
+//! Contains the structs and functions for getting state vectors from the OpenSky API.
 use std::sync::Arc;
 
 use log::{debug, info, warn};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_json::{from_value, Value};
 
 use crate::{bounding_box::BoundingBox, errors::Error};
 
 #[derive(Debug, Deserialize)]
+/// Represents a collection of state vectors returned by the OpenSky API.
 pub struct States {
     pub time: u64,
     pub states: Vec<StateVector>,
 }
 
 #[derive(Debug)]
+/// Represents a state vector of an aircraft.
 pub struct StateVector {
+    /// Unique ICAO 24-bit address of the transponder in hex string representation.
     pub icao24: String,
+    /// Callsign of the vehicle (8 chars). Can be null if no callsign has been received.
     pub callsign: Option<String>,
+    /// Country name inferred from the ICAO 24-bit address.
     pub origin_country: String,
+    /// Unix timestamp (seconds) for the last position update. Can be null if no position report was received by OpenSky within the past 15s.
     pub time_position: Option<u64>,
+    /// Unix timestamp (seconds) for the last update in general. This field is updated for any new, valid message received from the transponder.
     pub last_contact: u64,
+    /// WGS-84 longitude in decimal degrees. Can be null.
     pub longitude: Option<f32>,
+    /// WGS-84 latitude in decimal degrees. Can be null.
     pub latitude: Option<f32>,
+    /// Barometric altitude in meters. Can be null.
     pub baro_altitude: Option<f32>,
+    /// Boolean value which indicates if the position was retrieved from a surface position report.
     pub on_ground: bool,
+    /// Velocity over ground in m/s. Can be null.
     pub velocity: Option<f32>,
+    /// True track in decimal degrees clockwise from north (north=0°). Can be null.
     pub true_track: Option<f32>,
+    /// Vertical rate in m/s. A positive value indicates that the airplane is climbing, a negative value indicates that it descends. Can be null.
     pub vertical_rate: Option<f32>,
+    /// IDs of the receivers which contributed to this state vector. Is null if no filtering for sensor was used in the request.
     pub sensors: Option<Vec<u64>>,
+    /// Geometric altitude in meters. Can be null.
     pub geo_altitude: Option<f32>,
+    /// The transponder code aka Squawk. Can be null.
     pub squawk: Option<String>,
+    /// Whether flight status indicates special purpose indicator.
     pub spi: bool,
+    /// Origin of this state’s position.
+    /// 0 = ADS-B
+    /// 1 = ASTERIX
+    /// 2 = MLAT
+    /// 3 = FLARM
     pub position_source: u8,
-    /// There is an undocumented extra field in StateVectors, for now it will be read, and just
-    /// ignored. This will be updated when the API reference begins to list this field
+    /// Aircraft category.
+    /// 0 = No information at all
+    /// 1 = No ADS-B Emitter Category Information
+    /// 2 = Light (< 15500 lbs)
+    /// 3 = Small (15500 to 75000 lbs)
+    /// 4 = Large (75000 to 300000 lbs)
+    /// 5 = High Vortex Large (aircraft such as B-757)
+    /// 6 = Heavy (> 300000 lbs)
+    /// 7 = High Performance (> 5g acceleration and 400 kts)
+    /// 8 = Rotorcraft
+    /// 9 = Glider / sailplane
+    /// 10 = Lighter-than-air
+    /// 11 = Parachutist / Skydiver
+    /// 12 = Ultralight / hang-glider / paraglider
+    /// 13 = Reserved
+    /// 14 = Unmanned Aerial Vehicle
+    /// 15 = Space / Trans-atmospheric vehicle
+    /// 16 = Surface Vehicle – Emergency Vehicle
+    /// 17 = Surface Vehicle – Service Vehicle
+    /// 18 = Point Obstacle (includes tethered balloons)
+    /// 19 = Cluster Obstacle
+    /// 20 = Line Obstacle
     pub category: Option<u32>,
 }
 
@@ -125,7 +169,7 @@ impl StateRequest {
                 args.push('&');
             }
 
-            if let Some(first) = self.icao24_addresses.get(0) {
+            if let Some(first) = self.icao24_addresses.first() {
                 args.push_str(&format!("icao24={}", first));
             }
 
@@ -142,7 +186,7 @@ impl StateRequest {
                 args.push('&');
             }
 
-            if let Some(first) = self.serials.get(0) {
+            if let Some(first) = self.serials.first() {
                 args.push_str(&format!("serials={}", first));
             }
 
@@ -166,10 +210,7 @@ impl StateRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                let time = match self.time {
-                    Some(time) => time,
-                    None => 0,
-                };
+                let time = self.time.unwrap_or_default();
                 info!("received: {:#?}", String::from_utf8_lossy(&bytes));
                 let states: States = match serde_json::from_slice(&bytes) {
                     Ok(result) => result,

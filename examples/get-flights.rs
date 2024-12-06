@@ -33,7 +33,9 @@ async fn main() {
 
     let now = Local::now().timestamp() as u64;
     info!("now: {}", now);
-    let flights_request = opensky_api.get_flights(now - 100, now);
+    let mut flights_request = opensky_api.get_flights(now - 100, now);
+    flights_request.by_aircraft("8990e7".to_string());
+
 
     let result = flights_request.send().await;
     match result {
