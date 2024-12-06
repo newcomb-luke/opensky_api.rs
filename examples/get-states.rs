@@ -1,6 +1,6 @@
 use chrono::{Local, SecondsFormat};
 use colored::Colorize;
-use log::{error, info, warn, LevelFilter};
+use log::{error, info, LevelFilter};
 use std::{env, io::Write};
 
 use opensky_api::OpenSkyApi;

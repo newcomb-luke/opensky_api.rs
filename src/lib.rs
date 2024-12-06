@@ -3,17 +3,18 @@
 //! The OpenSky Network is a community-based receiver network which continuously collects air traffic surveillance data.
 //! Unlike other networks, OpenSky keeps the collected data forever and makes it available to researchers and developers.
 //! The OpenSky Network API provides a way to access the collected data.
-//! 
+//!
 //! Please follow [The OpenSky Network API documentation](https://openskynetwork.github.io/opensky-api/) for more information.
-//! 
+//!
 //! ## Example
 //! ```rust
 //! use opensky_api::OpenSkyApi;
-//! let api = OpenSkyApi::new();
-//! let request = api.get_states().at_time(1458564121).with_icao24("3c6444".to_string());
-//! match request.send().await {
-//!     Ok(states) => println!("states: {:#?}", states),
-//!     Err(e) => eprintln!("Error: {:?}", e),
+//! #[tokio::main]
+//! async fn main() {
+//!     let api = OpenSkyApi::new();
+//!     let request = api.get_states().at_time(1458564121).with_icao24("3c6444".to_string());
+//!     let result = request.send().await.expect("Failed to get states");
+//!     println!("{:#?}", result);
 //! }
 //! ```
 use std::sync::Arc;
@@ -23,10 +24,10 @@ pub mod errors;
 pub mod flights;
 pub mod states;
 
+pub use flights::Flight;
 use flights::FlightsRequestBuilder;
 use states::StateRequestBuilder;
-pub use flights::Flight;
-pub use states::{States, StateVector};
+pub use states::{StateVector, States};
 
 #[derive(Default)]
 ///  The OpenSky Network API <https://openskynetwork.github.io/>

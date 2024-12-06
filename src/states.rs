@@ -1,83 +1,82 @@
 //! Contains the structs and functions for getting state vectors from the OpenSky API.
 use std::sync::Arc;
 
-use log::{debug, info, warn};
-use serde::Deserialize;
-use serde_json::{from_value, Value};
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use serde_json::{from_value, Map, Value};
 
 use crate::{bounding_box::BoundingBox, errors::Error};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize)]
 /// Represents a collection of state vectors returned by the OpenSky API.
 pub struct States {
     pub time: u64,
     pub states: Vec<StateVector>,
 }
 
-#[derive(Debug)]
+impl<'de> Deserialize<'de> for States {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        debug!("deserializing states");
+        let obj: Value = Deserialize::deserialize(deserializer)?;
+        debug!("deserialized: {:#?}", obj);
+        let time: u64 = obj.get("time").unwrap().as_u64().unwrap();
+        let states = obj.get("states").unwrap();
+        debug!("states: {:#?}", states);
+        let states: Vec<StateVector> = match states {
+            Value::Null => Vec::new(),
+            Value::Array(_) => {
+                Deserialize::deserialize(states).map_err(serde::de::Error::custom)?
+            }
+            _ => return Err(serde::de::Error::custom("expected an array")),
+        };
+        debug!("successfully deserialized states");
+
+        Ok(States { time, states })
+    }
+}
+
+#[derive(Debug, Serialize)]
 /// Represents a state vector of an aircraft.
 pub struct StateVector {
     /// Unique ICAO 24-bit address of the transponder in hex string representation.
     pub icao24: String,
-    /// Callsign of the vehicle (8 chars). Can be null if no callsign has been received.
+    /// Callsign of the vehicle (8 chars). Can be None if no callsign has been received.
     pub callsign: Option<String>,
     /// Country name inferred from the ICAO 24-bit address.
     pub origin_country: String,
-    /// Unix timestamp (seconds) for the last position update. Can be null if no position report was received by OpenSky within the past 15s.
+    /// Unix timestamp (seconds) for the last position update. Can be None if no position report was received by OpenSky within the past 15s.
     pub time_position: Option<u64>,
     /// Unix timestamp (seconds) for the last update in general. This field is updated for any new, valid message received from the transponder.
     pub last_contact: u64,
-    /// WGS-84 longitude in decimal degrees. Can be null.
+    /// WGS-84 longitude in decimal degrees. Can be None.
     pub longitude: Option<f32>,
-    /// WGS-84 latitude in decimal degrees. Can be null.
+    /// WGS-84 latitude in decimal degrees. Can be None.
     pub latitude: Option<f32>,
-    /// Barometric altitude in meters. Can be null.
+    /// Barometric altitude in meters. Can be None.
     pub baro_altitude: Option<f32>,
     /// Boolean value which indicates if the position was retrieved from a surface position report.
     pub on_ground: bool,
-    /// Velocity over ground in m/s. Can be null.
+    /// Velocity over ground in m/s. Can be None.
     pub velocity: Option<f32>,
-    /// True track in decimal degrees clockwise from north (north=0°). Can be null.
+    /// True track in decimal degrees clockwise from north (north=0°). Can be None.
     pub true_track: Option<f32>,
-    /// Vertical rate in m/s. A positive value indicates that the airplane is climbing, a negative value indicates that it descends. Can be null.
+    /// Vertical rate in m/s. A positive value indicates that the airplane is climbing, a negative value indicates that it descends. Can be None.
     pub vertical_rate: Option<f32>,
-    /// IDs of the receivers which contributed to this state vector. Is null if no filtering for sensor was used in the request.
+    /// IDs of the receivers which contributed to this state vector. Is None if no filtering for sensor was used in the request.
     pub sensors: Option<Vec<u64>>,
-    /// Geometric altitude in meters. Can be null.
+    /// Geometric altitude in meters. Can be None.
     pub geo_altitude: Option<f32>,
-    /// The transponder code aka Squawk. Can be null.
+    /// The transponder code aka Squawk. Can be None.
     pub squawk: Option<String>,
     /// Whether flight status indicates special purpose indicator.
     pub spi: bool,
     /// Origin of this state’s position.
-    /// 0 = ADS-B
-    /// 1 = ASTERIX
-    /// 2 = MLAT
-    /// 3 = FLARM
-    pub position_source: u8,
+    pub position_source: PositionSource,
     /// Aircraft category.
-    /// 0 = No information at all
-    /// 1 = No ADS-B Emitter Category Information
-    /// 2 = Light (< 15500 lbs)
-    /// 3 = Small (15500 to 75000 lbs)
-    /// 4 = Large (75000 to 300000 lbs)
-    /// 5 = High Vortex Large (aircraft such as B-757)
-    /// 6 = Heavy (> 300000 lbs)
-    /// 7 = High Performance (> 5g acceleration and 400 kts)
-    /// 8 = Rotorcraft
-    /// 9 = Glider / sailplane
-    /// 10 = Lighter-than-air
-    /// 11 = Parachutist / Skydiver
-    /// 12 = Ultralight / hang-glider / paraglider
-    /// 13 = Reserved
-    /// 14 = Unmanned Aerial Vehicle
-    /// 15 = Space / Trans-atmospheric vehicle
-    /// 16 = Surface Vehicle – Emergency Vehicle
-    /// 17 = Surface Vehicle – Service Vehicle
-    /// 18 = Point Obstacle (includes tethered balloons)
-    /// 19 = Cluster Obstacle
-    /// 20 = Line Obstacle
-    pub category: Option<u32>,
+    pub category: Option<AirCraftCategory>,
 }
 
 impl<'de> Deserialize<'de> for StateVector {
@@ -85,40 +84,237 @@ impl<'de> Deserialize<'de> for StateVector {
     where
         D: serde::Deserializer<'de>,
     {
-        let values: Vec<Value> = Deserialize::deserialize(deserializer)?;
-
-        if values.len() != 18 && values.len() != 17 {
-            warn!("expected 18 elements, got {}", values.len());
-            return Err(serde::de::Error::invalid_length(
-                values.len(),
-                &"expected 18 elements",
-            ));
+        let all: Value = Deserialize::deserialize(deserializer)?;
+        match all {
+            Value::Array(arr) => Ok(StateVector::from(arr)),
+            Value::Object(obj) => Ok(StateVector::from(obj)),
+            _ => Err(serde::de::Error::custom("expected an array")),
         }
+    }
+}
 
-        Ok(StateVector {
-            icao24: from_value(values[0].clone()).map_err(serde::de::Error::custom)?,
-            callsign: from_value(values[1].clone()).map_err(serde::de::Error::custom)?,
-            origin_country: from_value(values[2].clone()).map_err(serde::de::Error::custom)?,
-            time_position: from_value(values[3].clone()).map_err(serde::de::Error::custom)?,
-            last_contact: from_value(values[4].clone()).map_err(serde::de::Error::custom)?,
-            longitude: from_value(values[5].clone()).map_err(serde::de::Error::custom)?,
-            latitude: from_value(values[6].clone()).map_err(serde::de::Error::custom)?,
-            baro_altitude: from_value(values[7].clone()).map_err(serde::de::Error::custom)?,
-            on_ground: from_value(values[8].clone()).map_err(serde::de::Error::custom)?,
-            velocity: from_value(values[9].clone()).map_err(serde::de::Error::custom)?,
-            true_track: from_value(values[10].clone()).map_err(serde::de::Error::custom)?,
-            vertical_rate: from_value(values[11].clone()).map_err(serde::de::Error::custom)?,
-            sensors: from_value(values[12].clone()).map_err(serde::de::Error::custom)?,
-            geo_altitude: from_value(values[13].clone()).map_err(serde::de::Error::custom)?,
-            squawk: from_value(values[14].clone()).map_err(serde::de::Error::custom)?,
-            spi: from_value(values[15].clone()).map_err(serde::de::Error::custom)?,
-            position_source: from_value(values[16].clone()).map_err(serde::de::Error::custom)?,
-            category: if values.len() == 18 {
-                from_value(values[17].clone()).map_err(serde::de::Error::custom)?
+impl From<Vec<Value>> for StateVector {
+    fn from(value: Vec<Value>) -> Self {
+        StateVector {
+            icao24: from_value(value[0].clone()).unwrap(),
+            callsign: from_value(value[1].clone()).unwrap(),
+            origin_country: from_value(value[2].clone()).unwrap(),
+            time_position: from_value(value[3].clone()).unwrap(),
+            last_contact: from_value(value[4].clone()).unwrap(),
+            longitude: from_value(value[5].clone()).unwrap(),
+            latitude: from_value(value[6].clone()).unwrap(),
+            baro_altitude: from_value(value[7].clone()).unwrap(),
+            on_ground: from_value(value[8].clone()).unwrap(),
+            velocity: from_value(value[9].clone()).unwrap(),
+            true_track: from_value(value[10].clone()).unwrap(),
+            vertical_rate: from_value(value[11].clone()).unwrap(),
+            sensors: from_value(value[12].clone()).unwrap(),
+            geo_altitude: from_value(value[13].clone()).unwrap(),
+            squawk: from_value(value[14].clone()).unwrap(),
+            spi: from_value(value[15].clone()).unwrap(),
+            position_source: from_value(value[16].clone()).unwrap(),
+            category: if value.len() == 18 {
+                from_value(value[17].clone()).unwrap()
             } else {
                 None
             },
-        })
+        }
+    }
+}
+
+impl From<Map<String, Value>> for StateVector {
+    fn from(map: Map<String, Value>) -> Self {
+        StateVector {
+            icao24: from_value(map.get("icao24").unwrap().clone()).unwrap(),
+            callsign: from_value(map.get("callsign").unwrap().clone()).unwrap(),
+            origin_country: from_value(map.get("origin_country").unwrap().clone()).unwrap(),
+            time_position: from_value(map.get("time_position").unwrap().clone()).unwrap(),
+            last_contact: from_value(map.get("last_contact").unwrap().clone()).unwrap(),
+            longitude: from_value(map.get("longitude").unwrap().clone()).unwrap(),
+            latitude: from_value(map.get("latitude").unwrap().clone()).unwrap(),
+            baro_altitude: from_value(map.get("baro_altitude").unwrap().clone()).unwrap(),
+            on_ground: from_value(map.get("on_ground").unwrap().clone()).unwrap(),
+            velocity: from_value(map.get("velocity").unwrap().clone()).unwrap(),
+            true_track: from_value(map.get("true_track").unwrap().clone()).unwrap(),
+            vertical_rate: from_value(map.get("vertical_rate").unwrap().clone()).unwrap(),
+            sensors: from_value(map.get("sensors").unwrap().clone()).unwrap(),
+            geo_altitude: from_value(map.get("geo_altitude").unwrap().clone()).unwrap(),
+            squawk: from_value(map.get("squawk").unwrap().clone()).unwrap(),
+            spi: from_value(map.get("spi").unwrap().clone()).unwrap(),
+            position_source: from_value(map.get("position_source").unwrap().clone()).unwrap(),
+            category: from_value(map.get("category").unwrap().clone()).unwrap(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum PositionSource {
+    ADSB,
+    ASTERIX,
+    MLAT,
+    FLARM,
+}
+
+impl<'de> Deserialize<'de> for PositionSource {
+    fn deserialize<D>(deserializer: D) -> Result<PositionSource, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Deserialize::deserialize(deserializer)? {
+            Value::Number(num) => Ok(PositionSource::from(num.as_u64().unwrap() as u8)),
+            Value::String(s) => Ok(PositionSource::from(s.as_str())),
+            _ => Err(serde::de::Error::custom("expected a number")),
+        }
+    }
+}
+
+impl From<u8> for PositionSource {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => PositionSource::ADSB,
+            1 => PositionSource::ASTERIX,
+            2 => PositionSource::MLAT,
+            3 => PositionSource::FLARM,
+            _ => {
+                eprintln!("unknown position source: {}", value);
+                PositionSource::ADSB
+            }
+        }
+    }
+}
+
+impl From<&str> for PositionSource {
+    fn from(value: &str) -> Self {
+        match value {
+            "ADSB" => PositionSource::ADSB,
+            "ASTERIX" => PositionSource::ASTERIX,
+            "MLAT" => PositionSource::MLAT,
+            "FLARM" => PositionSource::FLARM,
+            _ => {
+                eprintln!("unknown position source: {}", value);
+                PositionSource::ADSB
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum AirCraftCategory {
+    /// No information at all
+    NoInformation,
+    /// No ADS-B Emitter Category Information
+    NoADSB,
+    /// Light (< 15500 lbs)
+    Light,
+    /// Small (15500 to 75000 lbs)
+    Small,
+    /// Large (75000 to 300000 lbs)
+    Large,
+    /// High Vortex Large (aircraft such as B-757)
+    HighVortexLarge,
+    /// Heavy (> 300000 lbs)
+    Heavy,
+    /// High Performance (> 5g acceleration and 400 kts)
+    HighPerformance,
+    /// Rotorcraft
+    Rotorcraft,
+    /// Glider / sailplane
+    Glider,
+    /// Lighter-than-air
+    LighterThanAir,
+    /// Parachutist / Skydiver
+    Parachutist,
+    /// Ultralight / hang-glider / paraglider
+    Ultralight,
+    /// Reserved
+    Reserved,
+    /// Unmanned Aerial Vehicle
+    UAV,
+    /// Space / Trans-atmospheric vehicle
+    Space,
+    /// Surface Vehicle – Emergency Vehicle
+    SurfaceEmergency,
+    /// Surface Vehicle – Service Vehicle
+    SurfaceService,
+    /// Point Obstacle (includes tethered balloons)
+    PointObstacle,
+    /// Cluster Obstacle
+    ClusterObstacle,
+    /// Line Obstacle
+    LineObstacle,
+}
+
+impl<'de> Deserialize<'de> for AirCraftCategory {
+    fn deserialize<D>(deserializer: D) -> Result<AirCraftCategory, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Deserialize::deserialize(deserializer)? {
+            Value::Number(num) => Ok(AirCraftCategory::from(num.as_u64().unwrap() as u8)),
+            Value::String(s) => Ok(AirCraftCategory::from(s.as_str())),
+            _ => Err(serde::de::Error::custom("expected a number")),
+        }
+    }
+}
+
+impl From<u8> for AirCraftCategory {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => AirCraftCategory::NoInformation,
+            1 => AirCraftCategory::NoADSB,
+            2 => AirCraftCategory::Light,
+            3 => AirCraftCategory::Small,
+            4 => AirCraftCategory::Large,
+            5 => AirCraftCategory::HighVortexLarge,
+            6 => AirCraftCategory::Heavy,
+            7 => AirCraftCategory::HighPerformance,
+            8 => AirCraftCategory::Rotorcraft,
+            9 => AirCraftCategory::Glider,
+            10 => AirCraftCategory::LighterThanAir,
+            11 => AirCraftCategory::Parachutist,
+            12 => AirCraftCategory::Ultralight,
+            13 => AirCraftCategory::Reserved,
+            14 => AirCraftCategory::UAV,
+            15 => AirCraftCategory::Space,
+            16 => AirCraftCategory::SurfaceEmergency,
+            17 => AirCraftCategory::SurfaceService,
+            18 => AirCraftCategory::PointObstacle,
+            19 => AirCraftCategory::ClusterObstacle,
+            20 => AirCraftCategory::LineObstacle,
+            _ => AirCraftCategory::NoInformation,
+        }
+    }
+}
+
+impl From<&str> for AirCraftCategory {
+    fn from(value: &str) -> Self {
+        match value {
+            "NoInformation" => AirCraftCategory::NoInformation,
+            "NoADSB" => AirCraftCategory::NoADSB,
+            "Light" => AirCraftCategory::Light,
+            "Small" => AirCraftCategory::Small,
+            "Large" => AirCraftCategory::Large,
+            "HighVortexLarge" => AirCraftCategory::HighVortexLarge,
+            "Heavy" => AirCraftCategory::Heavy,
+            "HighPerformance" => AirCraftCategory::HighPerformance,
+            "Rotorcraft" => AirCraftCategory::Rotorcraft,
+            "Glider" => AirCraftCategory::Glider,
+            "LighterThanAir" => AirCraftCategory::LighterThanAir,
+            "Parachutist" => AirCraftCategory::Parachutist,
+            "Ultralight" => AirCraftCategory::Ultralight,
+            "Reserved" => AirCraftCategory::Reserved,
+            "UAV" => AirCraftCategory::UAV,
+            "Space" => AirCraftCategory::Space,
+            "SurfaceEmergency" => AirCraftCategory::SurfaceEmergency,
+            "SurfaceService" => AirCraftCategory::SurfaceService,
+            "PointObstacle" => AirCraftCategory::PointObstacle,
+            "ClusterObstacle" => AirCraftCategory::ClusterObstacle,
+            "LineObstacle" => AirCraftCategory::LineObstacle,
+            _ => {
+                eprintln!("unknown aircraft category: {}", value);
+                AirCraftCategory::NoInformation
+            }
+        }
     }
 }
 
@@ -210,24 +406,11 @@ impl StateRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                let time = self.time.unwrap_or_default();
                 info!("received: {:#?}", String::from_utf8_lossy(&bytes));
                 let states: States = match serde_json::from_slice(&bytes) {
                     Ok(result) => result,
-                    Err(err) => {
-                        warn!("JSON Error: {}", err);
-                        if err.to_string().as_str().starts_with("invalid type: null") {
-                            States {
-                                time,
-                                states: Vec::new(),
-                            }
-                        } else {
-                            return Err(Error::InvalidJson(err));
-                        }
-                    }
+                    Err(err) => return Err(Error::InvalidJson(err)),
                 };
-
-                debug!("ShortInnerOpenSkyStates: \n{:#?}", states);
 
                 Ok(states)
             }

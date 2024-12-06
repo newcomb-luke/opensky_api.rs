@@ -1,6 +1,6 @@
 use chrono::{Local, SecondsFormat};
 use colored::Colorize;
-use log::{error, info, warn, LevelFilter};
+use log::{error, info, LevelFilter};
 use std::{env, io::Write};
 
 use opensky_api::OpenSkyApi;
@@ -35,7 +35,6 @@ async fn main() {
     info!("now: {}", now);
     let mut flights_request = opensky_api.get_flights(now - 100, now);
     flights_request.by_aircraft("8990e7".to_string());
-
 
     let result = flights_request.send().await;
     match result {
