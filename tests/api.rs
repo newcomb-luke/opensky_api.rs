@@ -4,7 +4,7 @@ use std::{
 };
 
 use dotenv::dotenv;
-use opensky_api::{OpenSkyApi, States};
+use opensky_api::{Flight, OpenSkyApi, States};
 
 #[tokio::test]
 async fn get_all_states() {
@@ -71,4 +71,30 @@ async fn get_all_flights() {
     let flights_request = opensky_api.get_flights(begin, end);
 
     let _flights = flights_request.send().await.unwrap();
+}
+
+#[tokio::test]
+async fn serde_flights() {
+    dotenv().ok();
+    let username = env::var("OPENSKY_USER").expect("OPENSKY_USER environment variable not set");
+    let password = env::var("OPENSKY_PASS").expect("OPENSKY_PASS environment variable not set");
+
+    let opensky_api = OpenSkyApi::with_login(username, password);
+
+    let begin = 1517230000;
+    let end = 1517230800;
+
+    let mut flights_request = opensky_api.get_flights(begin, end);
+    flights_request.by_departure("RCTP".to_string());
+
+    let flights = flights_request.send().await.unwrap();
+
+    let json = serde_json::to_string(&flights).unwrap();
+    assert_eq!(
+        json,
+        r#"[{"icao24":"70e050","first_seen":1517230718,"est_departure_airport":"RCTP","last_seen":1517234349,"est_arrival_airport":null,"callsign":"JCC667  ","est_departure_airport_horiz_distance":2254,"est_departure_airport_vert_distance":577,"est_arrival_airport_horiz_distance":null,"est_arrival_airport_vert_distance":null,"departure_airport_candidates_count":1,"arrival_airport_candidates_count":0},{"icao24":"89906d","first_seen":1517230549,"est_departure_airport":"RCTP","last_seen":1517236873,"est_arrival_airport":"RPLL","callsign":"EVA261  ","est_departure_airport_horiz_distance":3571,"est_departure_airport_vert_distance":478,"est_arrival_airport_horiz_distance":7249,"est_arrival_airport_vert_distance":243,"departure_airport_candidates_count":1,"arrival_airport_candidates_count":0}]"#,
+    );
+
+    let flights: Vec<Flight> = serde_json::from_str(&json).unwrap();
+    println!("flights: {:#?}", flights);
 }

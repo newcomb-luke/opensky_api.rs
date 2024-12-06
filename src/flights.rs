@@ -2,44 +2,44 @@
 use std::sync::Arc;
 
 use crate::errors::Error;
-use log::debug;
-use serde::Deserialize;
+use log::{debug, warn};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 /// Represents a flight object returned by the OpenSky API
 pub struct Flight {
     /// Unique ICAO 24-bit address of the transponder in hex string representation. All letters are lower case.
     pub icao24: String,
-    #[serde(rename(deserialize = "firstSeen"))]
+    #[serde(alias = "firstSeen")]
     /// Estimated time of departure for the flight as Unix time (seconds since epoch).
     pub first_seen: u64,
-    #[serde(rename(deserialize = "estDepartureAirport"))]
+    #[serde(alias = "estDepartureAirport")]
     /// ICAO code of the estimated departure airport. Can be None if the airport could not be identified.
     pub est_departure_airport: Option<String>,
-    #[serde(rename(deserialize = "lastSeen"))]
+    #[serde(alias = "lastSeen")]
     /// Estimated time of arrival for the flight as Unix time (seconds since epoch).
     pub last_seen: u64,
-    #[serde(rename(deserialize = "estArrivalAirport"))]
+    #[serde(alias = "estArrivalAirport")]
     ///  ICAO code of the estimated arrival airport. Can be None if the airport could not be identified.
     pub est_arrival_airport: Option<String>,
     /// Callsign of the vehicle (8 chars). Can be None if no callsign has been received. If the vehicle transmits multiple callsigns during the flight, we take the one seen most frequently.
     pub callsign: Option<String>,
-    #[serde(rename(deserialize = "estDepartureAirportHorizDistance"))]
+    #[serde(alias = "estDepartureAirportHorizDistance")]
     /// Horizontal distance of the last received airborne position to the estimated departure airport in meters.
     pub est_departure_airport_horiz_distance: Option<u32>,
-    #[serde(rename(deserialize = "estDepartureAirportVertDistance"))]
+    #[serde(alias = "estDepartureAirportVertDistance")]
     /// Vertical distance of the last received airborne position to the estimated departure airport in meters.
     pub est_departure_airport_vert_distance: Option<u32>,
-    #[serde(rename(deserialize = "estArrivalAirportHorizDistance"))]
+    #[serde(alias = "estArrivalAirportHorizDistance")]
     /// Horizontal distance of the last received airborne position to the estimated arrival airport in meters.
     pub est_arrival_airport_horiz_distance: Option<u32>,
-    #[serde(rename(deserialize = "estArrivalAirportVertDistance"))]
+    #[serde(alias = "estArrivalAirportVertDistance")]
     /// Vertical distance of the last received airborne position to the estimated arrival airport in meters.
     pub est_arrival_airport_vert_distance: Option<u32>,
-    #[serde(rename(deserialize = "departureAirportCandidatesCount"))]
+    #[serde(alias = "departureAirportCandidatesCount")]
     /// Number of other possible departure airports. These are airports in short distance to estDepartureAirport.
     pub departure_airport_candidates_count: u16,
-    #[serde(rename(deserialize = "arrivalAirportCandidatesCount"))]
+    #[serde(alias = "arrivalAirportCandidatesCount")]
     /// Number of other possible departure airports.
     pub arrival_airport_candidates_count: u16,
 }
@@ -51,6 +51,31 @@ enum FlightsRequestType {
     Arrival(String),
     Departure(String),
 }
+
+impl FlightsRequestType {
+    pub fn max_interval(&self) -> u64 {
+        match self {
+            // 2 hours
+            FlightsRequestType::All => 2*60*60,
+            // 30 days
+            FlightsRequestType::Aircraft(_) => 30*24*60*60,
+            // 7 days
+            FlightsRequestType::Arrival(_) => 7*24*60*60,
+            // 7 days
+            FlightsRequestType::Departure(_) => 7*24*60*60,
+        }
+    }
+
+    pub fn endpoint(&self) -> &'static str {
+        match self {
+            FlightsRequestType::All => "all",
+            FlightsRequestType::Aircraft(_) => "aircraft",
+            FlightsRequestType::Arrival(_) => "arrival",
+            FlightsRequestType::Departure(_) => "departure",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FlightsRequest {
     login: Option<Arc<(String, String)>>,
@@ -67,12 +92,11 @@ impl FlightsRequest {
             String::new()
         };
 
-        let endpoint = match &self.request_type {
-            FlightsRequestType::All => "all",
-            FlightsRequestType::Aircraft(_) => "aircraft",
-            FlightsRequestType::Arrival(_) => "arrival",
-            FlightsRequestType::Departure(_) => "departure",
-        };
+        let endpoint = self.request_type.endpoint();
+        let interval = self.end - self.begin;
+        if interval > self.request_type.max_interval() {
+            warn!("Interval ({} secs) is larger than limits ({} secs)", interval, self.request_type.max_interval());
+        }
 
         let mut args = format!("?begin={}&end={}", self.begin, self.end);
         let additional_filters = match &self.request_type {
