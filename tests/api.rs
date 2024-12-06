@@ -4,7 +4,7 @@ use std::{
 };
 
 use dotenv::dotenv;
-use opensky_api::{Flight, OpenSkyApi, States};
+use opensky_api::{tracks::FlightTrack, Flight, OpenSkyApi, States};
 
 #[tokio::test]
 async fn get_all_states() {
@@ -97,4 +97,20 @@ async fn serde_flights() {
 
     let flights: Vec<Flight> = serde_json::from_str(&json).unwrap();
     println!("flights: {:#?}", flights);
+}
+
+#[tokio::test]
+async fn get_tracks() {
+    dotenv().ok();
+    let username = env::var("OPENSKY_USER").expect("OPENSKY_USER environment variable not set");
+    let password = env::var("OPENSKY_PASS").expect("OPENSKY_PASS environment variable not set");
+
+    let opensky_api = OpenSkyApi::with_login(username, password);
+
+    let track_request = opensky_api.get_tracks("8990ed".to_string());
+
+    let track = track_request.send().await.unwrap();
+    let json = serde_json::to_string(&track).unwrap();
+    let track: FlightTrack = serde_json::from_str(&json).unwrap();
+    println!("tracks: {:#?}", track);
 }

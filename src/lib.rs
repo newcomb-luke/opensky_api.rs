@@ -23,14 +23,17 @@ pub mod bounding_box;
 pub mod errors;
 pub mod flights;
 pub mod states;
+pub mod tracks;
 
 pub use flights::Flight;
 use flights::FlightsRequestBuilder;
 use states::StateRequestBuilder;
 pub use states::{StateVector, States};
+use tracks::TrackRequestBuilder;
+pub use tracks::{FlightTrack, Waypoint};
 
 #[derive(Default)]
-///  The OpenSky Network API <https://openskynetwork.github.io/>
+///  The OpenSky Network API <https://openskynetwork.github.io/opensky-api>
 pub struct OpenSkyApi {
     login: Option<Arc<(String, String)>>,
 }
@@ -60,5 +63,21 @@ impl OpenSkyApi {
     ///
     pub fn get_flights(&self, begin: u64, end: u64) -> FlightsRequestBuilder {
         FlightsRequestBuilder::new(self.login.clone(), begin, end)
+    }
+
+    /// Create a new TrackRequestBuilder for the given icao24 address of a certain aircraft.
+    ///
+    /// In contrast to state vectors, trajectories do not contain all information we have about the flight, but rather show the aircraft’s general movement pattern. For this reason, waypoints are selected among available state vectors given the following set of rules:
+    /// * The first point is set immediately after the the aircraft’s expected departure, or after the network received the first position when the aircraft entered its reception range.
+    /// * The last point is set right before the aircraft’s expected arrival, or the aircraft left the networks reception range.
+    /// * There is a waypoint at least every 15 minutes when the aircraft is in-flight.
+    /// * A waypoint is added if the aircraft changes its track more than 2.5°.
+    /// * A waypoint is added if the aircraft changes altitude by more than 100m (~330ft).
+    /// * A waypoint is added if the on-ground state changes.
+    ///
+    /// Tracks are strongly related to flights. Internally, we compute flights and tracks within the same processing step. As such, it may be beneficial to retrieve a list of flights with the API methods from above, and use these results with the given time stamps to retrieve detailed track information.
+    ///
+    pub fn get_tracks(&self, icao24: String) -> TrackRequestBuilder {
+        TrackRequestBuilder::new(self.login.clone(), icao24)
     }
 }

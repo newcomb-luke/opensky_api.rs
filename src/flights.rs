@@ -56,13 +56,13 @@ impl FlightsRequestType {
     pub fn max_interval(&self) -> u64 {
         match self {
             // 2 hours
-            FlightsRequestType::All => 2*60*60,
+            FlightsRequestType::All => 2 * 60 * 60,
             // 30 days
-            FlightsRequestType::Aircraft(_) => 30*24*60*60,
+            FlightsRequestType::Aircraft(_) => 30 * 24 * 60 * 60,
             // 7 days
-            FlightsRequestType::Arrival(_) => 7*24*60*60,
+            FlightsRequestType::Arrival(_) => 7 * 24 * 60 * 60,
             // 7 days
-            FlightsRequestType::Departure(_) => 7*24*60*60,
+            FlightsRequestType::Departure(_) => 7 * 24 * 60 * 60,
         }
     }
 
@@ -95,7 +95,11 @@ impl FlightsRequest {
         let endpoint = self.request_type.endpoint();
         let interval = self.end - self.begin;
         if interval > self.request_type.max_interval() {
-            warn!("Interval ({} secs) is larger than limits ({} secs)", interval, self.request_type.max_interval());
+            warn!(
+                "Interval ({} secs) is larger than limits ({} secs)",
+                interval,
+                self.request_type.max_interval()
+            );
         }
 
         let mut args = format!("?begin={}&end={}", self.begin, self.end);
