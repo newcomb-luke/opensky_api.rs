@@ -1,6 +1,10 @@
-use std::sync::Arc;
+//! Module for handling flight tracks by aircraft.
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use log::debug;
+use log::{debug, warn};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
@@ -9,7 +13,8 @@ use crate::errors::Error;
 #[derive(Debug, Serialize, Deserialize)]
 /// Represents the trajectory for a certain aircraft at a given time.
 pub struct FlightTrack {
-    /// Unique ICAO 24-bit address of the transponder in lower case hex string representation.
+    /// Unique ICAO 24-bit address of the transponder in lower case hex string
+    /// representation.
     pub icao24: String,
     #[serde(alias = "startTime")]
     /// Time of the first waypoint in seconds since epoch (Unix time).
@@ -17,7 +22,7 @@ pub struct FlightTrack {
     #[serde(alias = "endTime")]
     /// Time of the last waypoint in seconds since epoch (Unix time).
     pub end_time: f64,
-    /// Callsign (8 characters) that holds for the whole track. Can be None.
+    /// Callsign (8 characters) that holds for the whole track.
     pub callsign: Option<String>,
     /// Waypoints of the trajectory
     pub path: Vec<Waypoint>,
@@ -26,17 +31,20 @@ pub struct FlightTrack {
 #[derive(Debug, Serialize)]
 /// Represents the single waypoint that is a basic part of flight trajectory.
 pub struct Waypoint {
-    /// Time which the given waypoint is associated with in seconds since epoch (Unix time).
+    /// Time which the given waypoint is associated with in seconds since epoch
+    /// (Unix time).
     pub time: u64,
-    /// WGS-84 latitude in decimal degrees. Can be None.
+    /// WGS-84 latitude in decimal degrees.
     pub latitude: Option<f64>,
-    /// WGS-84 longitude in decimal degrees. Can be None.
+    /// WGS-84 longitude in decimal degrees.
     pub longitude: Option<f64>,
-    /// Barometric altitude in meters. Can be None.
+    /// Barometric altitude in meters.
     pub baro_altitude: Option<f64>,
-    /// True track in decimal degrees clockwise from north (north=0°). Can be None.
+    /// True track in decimal degrees clockwise from north (north=0°). Can be
+    /// None.
     pub true_track: Option<f64>,
-    /// Boolean value which indicates if the position was retrieved from a surface position report.
+    /// Boolean value which indicates if the position was retrieved from a
+    /// surface position report.
     pub on_ground: bool,
 }
 
@@ -94,6 +102,18 @@ impl TrackRequest {
         } else {
             String::new()
         };
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        if self.time != 0 && now - self.time > 30 * 24 * 60 * 60 {
+            warn!(
+                "Interval ({} secs) is larger than limits ({} secs)",
+                now - self.time,
+                30 * 24 * 60 * 60
+            );
+        }
 
         let url = format!(
             "https://{}opensky-network.org/api/tracks/all?icao24={}&time={}",

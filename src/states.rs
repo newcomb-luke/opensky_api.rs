@@ -1,7 +1,7 @@
-//! Contains the structs and functions for getting state vectors from the OpenSky API.
+//! Module for searching state vectors from the OpenSky Network API.
 use std::sync::Arc;
 
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_value, Map, Value};
 
@@ -19,12 +19,9 @@ impl<'de> Deserialize<'de> for States {
     where
         D: serde::Deserializer<'de>,
     {
-        debug!("deserializing states");
         let obj: Value = Deserialize::deserialize(deserializer)?;
-        debug!("deserialized: {:#?}", obj);
         let time: u64 = obj.get("time").unwrap().as_u64().unwrap();
         let states = obj.get("states").unwrap();
-        debug!("states: {:#?}", states);
         let states: Vec<StateVector> = match states {
             Value::Null => Vec::new(),
             Value::Array(_) => {
@@ -32,7 +29,6 @@ impl<'de> Deserialize<'de> for States {
             }
             _ => return Err(serde::de::Error::custom("expected an array")),
         };
-        debug!("successfully deserialized states");
 
         Ok(States { time, states })
     }
@@ -41,35 +37,43 @@ impl<'de> Deserialize<'de> for States {
 #[derive(Debug, Serialize)]
 /// Represents a state vector of an aircraft.
 pub struct StateVector {
-    /// Unique ICAO 24-bit address of the transponder in hex string representation.
+    /// Unique ICAO 24-bit address of the transponder in hex string
+    /// representation.
     pub icao24: String,
-    /// Callsign of the vehicle (8 chars). Can be None if no callsign has been received.
+    /// Callsign of the vehicle (8 chars). Can be None if no callsign has been
+    /// received.
     pub callsign: Option<String>,
     /// Country name inferred from the ICAO 24-bit address.
     pub origin_country: String,
-    /// Unix timestamp (seconds) for the last position update. Can be None if no position report was received by OpenSky within the past 15s.
+    /// Unix timestamp (seconds) for the last position update. Can be None if no
+    /// position report was received by OpenSky within the past 15s.
     pub time_position: Option<u64>,
-    /// Unix timestamp (seconds) for the last update in general. This field is updated for any new, valid message received from the transponder.
+    /// Unix timestamp (seconds) for the last update in general. This field is
+    /// updated for any new, valid message received from the transponder.
     pub last_contact: u64,
-    /// WGS-84 longitude in decimal degrees. Can be None.
+    /// WGS-84 longitude in decimal degrees.
     pub longitude: Option<f32>,
-    /// WGS-84 latitude in decimal degrees. Can be None.
+    /// WGS-84 latitude in decimal degrees.
     pub latitude: Option<f32>,
-    /// Barometric altitude in meters. Can be None.
+    /// Barometric altitude in meters.
     pub baro_altitude: Option<f32>,
-    /// Boolean value which indicates if the position was retrieved from a surface position report.
+    /// Boolean value which indicates if the position was retrieved from a
+    /// surface position report.
     pub on_ground: bool,
-    /// Velocity over ground in m/s. Can be None.
+    /// Velocity over ground in m/s.
     pub velocity: Option<f32>,
-    /// True track in decimal degrees clockwise from north (north=0°). Can be None.
+    /// True track in decimal degrees clockwise from north (north=0°). Can be
+    /// None.
     pub true_track: Option<f32>,
-    /// Vertical rate in m/s. A positive value indicates that the airplane is climbing, a negative value indicates that it descends. Can be None.
+    /// Vertical rate in m/s. A positive value indicates that the airplane is
+    /// climbing, a negative value indicates that it descends.
     pub vertical_rate: Option<f32>,
-    /// IDs of the receivers which contributed to this state vector. Is None if no filtering for sensor was used in the request.
+    /// IDs of the receivers which contributed to this state vector. Is None if
+    /// no filtering for sensor was used in the request.
     pub sensors: Option<Vec<u64>>,
-    /// Geometric altitude in meters. Can be None.
+    /// Geometric altitude in meters.
     pub geo_altitude: Option<f32>,
-    /// The transponder code aka Squawk. Can be None.
+    /// The transponder code aka Squawk.
     pub squawk: Option<String>,
     /// Whether flight status indicates special purpose indicator.
     pub spi: bool,
@@ -399,6 +403,7 @@ impl StateRequest {
             "https://{}opensky-network.org/api/states/{}{}",
             login_part, endpoint, args
         );
+        debug!("Request url = {}", url);
 
         let res = reqwest::get(url).await?;
 
@@ -406,13 +411,10 @@ impl StateRequest {
             reqwest::StatusCode::OK => {
                 let bytes = res.bytes().await?.to_vec();
 
-                info!("received: {:#?}", String::from_utf8_lossy(&bytes));
-                let states: States = match serde_json::from_slice(&bytes) {
-                    Ok(result) => result,
-                    Err(err) => return Err(Error::InvalidJson(err)),
-                };
-
-                Ok(states)
+                match serde_json::from_slice(&bytes) {
+                    Ok(result) => Ok(result),
+                    Err(err) => Err(Error::InvalidJson(err)),
+                }
             }
             status => Err(Error::Http(status)),
         }
@@ -436,63 +438,62 @@ impl StateRequestBuilder {
         }
     }
 
-    /// Adds the provided bounding box to the request. This will only get states that are within
-    /// that bounding box. This will overwrite any previously specified bounding box.
-    ///
+    /// Adds the provided bounding box to the request. This will only get states
+    /// that are within that bounding box. This will overwrite any
+    /// previously specified bounding box.
     pub fn with_bbox(mut self, bbox: BoundingBox) -> Self {
         self.inner.bbox = Some(bbox);
 
         self
     }
 
-    /// Specifies the time at which to get the data. The validity of this timestamp depends on how
-    /// much access the user has to historical data.
+    /// Specifies the time at which to get the data. The validity of this
+    /// timestamp depends on how much access the user has to historical
+    /// data.
     ///
     /// This time is specified as the time in seconds since the Unix Epoch.
-    ///
     pub fn at_time(mut self, timestamp: u64) -> Self {
         self.inner.time = Some(timestamp);
 
         self
     }
 
-    /// Adds an ICAO24 transponder address represented by a hex string (e.g. abc9f3) to filter the
-    /// request by. Calling this function multiple times will append more addresses which will be
-    /// included in the returned data.
+    /// Adds an ICAO24 transponder address represented by a hex string (e.g.
+    /// abc9f3) to filter the request by. Calling this function multiple
+    /// times will append more addresses which will be included in the
+    /// returned data.
     ///
     /// If this function is never called, it will provide data for all aircraft.
-    ///
     pub fn with_icao24(mut self, address: String) -> Self {
         self.inner.icao24_addresses.push(address);
 
         self
     }
 
-    /// Adds a serial number of a sensor that you own. This must be owned by you and registered in
-    /// order to not return an HTTP error 403 (Forbidden). Requests from your own sensors are not
-    /// ratelimited.
+    /// Adds a serial number of a sensor that you own. This must be owned by you
+    /// and registered in order to not return an HTTP error 403 (Forbidden).
+    /// Requests from your own sensors are not ratelimited.
     ///
-    /// Calling this function multiple times will append more serial numbers of receiviers which
-    /// provide the returned data.
-    ///
+    /// Calling this function multiple times will append more serial numbers of
+    /// receiviers which provide the returned data.
     pub fn with_serial(mut self, serial: u64) -> Self {
         self.inner.serials.push(serial);
 
         self
     }
 
-    /// Consumes this StateRequestBuilder and returns a new StateRequest. If this
-    /// StateRequestBuilder could be used again effectively, then the finish() method should
-    /// be called instead because that will allow this to be reused.
-    ///
+    /// Consumes this StateRequestBuilder and returns a new StateRequest. If
+    /// this StateRequestBuilder could be used again effectively, then the
+    /// finish() method should be called instead because that will allow
+    /// this to be reused.
     pub fn consume(self) -> StateRequest {
         self.inner
     }
 
-    /// Returns the StateRequest that this StateRequestBuilder has created. This clones the inner
-    /// StateRequest. If this StateRequestBuilder will be only used once, the consume() method
-    /// should be used instead which will only move the inner value instead of calling clone()
-    ///
+    /// Returns the StateRequest that this StateRequestBuilder has created. This
+    /// clones the inner StateRequest. If this StateRequestBuilder will be
+    /// only used once, the consume() method should be used instead which
+    /// will only move the inner value instead of calling clone()
     pub fn finish(&self) -> StateRequest {
         self.inner.clone()
     }

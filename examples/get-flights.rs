@@ -1,7 +1,11 @@
 use chrono::{Local, SecondsFormat};
 use colored::Colorize;
 use log::{error, info, LevelFilter};
-use std::{env, io::Write};
+use std::{
+    env,
+    io::Write,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use opensky_api::OpenSkyApi;
 #[tokio::main]
@@ -31,15 +35,19 @@ async fn main() {
 
     let opensky_api = OpenSkyApi::with_login(username, password);
 
-    let now = Local::now().timestamp() as u64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     info!("now: {}", now);
-    let mut flights_request = opensky_api.get_flights(now - 100, now);
-    flights_request.by_aircraft("8990e7".to_string());
+    let mut flights_request = opensky_api.get_flights(now - 7 * 24 * 60 * 60, now);
+    flights_request.by_aircraft("8990ed".to_string());
 
     let result = flights_request.send().await;
     match result {
         Ok(flights) => {
             info!("get result: {:#?}", flights);
+            info!("Get {} flights", flights.len());
         }
         Err(e) => {
             error!("Error: {:?}", e);
