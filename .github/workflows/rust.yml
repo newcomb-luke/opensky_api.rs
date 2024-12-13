@@ -19,4 +19,7 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
+      env:
+        OPENSKY_PASS: ${{ secrets.OPENSKY_PASS }}
+        OPENSKY_USER: ${{ secrets.OPENSKY_USER }}
       run: cargo test --verbose
