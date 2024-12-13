@@ -1,8 +1,6 @@
 # opensky-network-rs
 Fork from https://github.com/newcomb-luke/opensky_api.rs
 
-# My Crate
-
 [![Crates.io](https://img.shields.io/crates/v/opensky-network.svg)](https://crates.io/crates/)
 [![Documentation](https://docs.rs/opensky-network/badge.svg)](https://docs.rs/opensky-network)
 [![Build Status](https://github.com/x807x/opensky-network-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/x807x/opensky-network-rs/actions)
