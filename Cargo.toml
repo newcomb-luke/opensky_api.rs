@@ -1,11 +1,11 @@
 [package]
 name = "opensky_api"
-version = "0.1.4"
-authors = ["Luke Newcomb <newcomb.luke@protonmail.com>"]
+version = "0.2.0"
+authors = ["x807x <https://github.com/x807x>","Luke Newcomb <newcomb.luke@protonmail.com>"]
 description = "A simple Rust wrapper library around the OpenSky Network API"
 license = "MIT"
 edition = "2021"
-repository = "https://github.com/newcomb-luke/opensky_api.rs"
+repository = "https://github.com/x807x/opensky_api.rs"
 
 [dependencies]
 reqwest = "0.12.9"
