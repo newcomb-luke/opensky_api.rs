@@ -7,7 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use opensky_api::OpenSkyApi;
+use opensky_network::OpenSkyApi;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();

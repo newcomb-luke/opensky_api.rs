@@ -12,7 +12,7 @@
 //!
 //! Get the state vectors of aircraft.
 //! ```rust
-//! use opensky_api::OpenSkyApi;
+//! use opensky_network::OpenSkyApi;
 //! #[tokio::main]
 //! async fn main() {
 //!     let api = OpenSkyApi::new();
@@ -27,7 +27,7 @@
 //!
 //! Get the flight data of aircraft.
 //! ```rust
-//! use opensky_api::OpenSkyApi;
+//! use opensky_network::OpenSkyApi;
 //! use std::env;
 //! #[tokio::main]
 //! async fn main() {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use dotenv::dotenv;
-use opensky_api::{tracks::FlightTrack, Flight, OpenSkyApi, States};
+use opensky_network::{tracks::FlightTrack, Flight, OpenSkyApi, States};
 
 #[tokio::test]
 async fn get_all_states() {

@@ -5,7 +5,7 @@ authors = ["x807x <https://github.com/x807x>","Luke Newcomb <newcomb.luke@proton
 description = "A simple Rust wrapper library around the OpenSky Network API"
 license = "MIT"
 edition = "2021"
-repository = "https://github.com/x807x/opensky_api.rs"
+repository = "https://github.com/x807x/opensky_network.rs"
 
 [dependencies]
 reqwest = "0.12.9"

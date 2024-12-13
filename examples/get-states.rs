@@ -3,7 +3,7 @@ use colored::Colorize;
 use log::{error, info, LevelFilter};
 use std::{env, io::Write};
 
-use opensky_api::OpenSkyApi;
+use opensky_network::OpenSkyApi;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();

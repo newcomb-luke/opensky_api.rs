@@ -1,6 +1,6 @@
 use colored::Colorize;
 use log::{error, info, LevelFilter};
-use opensky_api::OpenSkyApi;
+use opensky_network::OpenSkyApi;
 use std::{env, io::Write};
 
 #[tokio::main]
