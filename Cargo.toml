@@ -1,5 +1,5 @@
 [package]
-name = "opensky_api"
+name = "opensky-network"
 version = "0.2.0"
 authors = ["x807x <https://github.com/x807x>","Luke Newcomb <newcomb.luke@protonmail.com>"]
 description = "A simple Rust wrapper library around the OpenSky Network API"
