@@ -1,22 +1,22 @@
 [package]
-name = "opensky_api"
-version = "0.1.4"
-authors = ["Luke Newcomb <newcomb.luke@protonmail.com>"]
+name = "opensky-network"
+version = "0.2.1"
+authors = ["x807x <https://github.com/x807x>","Luke Newcomb <newcomb.luke@protonmail.com>"]
 description = "A simple Rust wrapper library around the OpenSky Network API"
 license = "MIT"
 edition = "2021"
-repository = "https://github.com/newcomb-luke/opensky_api.rs"
+repository = "https://github.com/x807x/opensky_network.rs"
 
 [dependencies]
 reqwest = "0.12.9"
 thiserror = "2.0.4"
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.133"
-dotenv = "0.15.0"
 log = "0.4.22"
-env_logger = "0.11.5"
-colored = "2.1.0"
-chrono = { version = "0.4.38", features = ["alloc"] }
 
 [dev-dependencies]
 tokio = { version = "1.42.0", features = ["full"] }
+env_logger = "0.11.5"
+colored = "2.1.0"
+chrono = { version = "0.4.38", features = ["alloc"] }
+dotenv = "0.15.0"
